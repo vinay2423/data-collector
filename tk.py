@@ -5,9 +5,6 @@ import os
 
 app = Flask(__name__)
 
-# ---------------------------
-# DATABASE PATH
-# ---------------------------
 DB = os.path.join(os.path.dirname(__file__), "esp1.db")
 
 # ---------------------------
@@ -27,6 +24,7 @@ def init():
     CREATE TABLE IF NOT EXISTS tickets(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         bcr TEXT UNIQUE,
+        requestor TEXT,
         service TEXT,
         namespace TEXT,
         stage TEXT,
@@ -45,13 +43,6 @@ def init():
         ticket_id INTEGER,
         status TEXT,
         note TEXT,
-        time TEXT
-    )
-    """)
-    conn.execute("""
-    CREATE TABLE IF NOT EXISTS remarks(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT,
         time TEXT
     )
     """)
@@ -91,6 +82,9 @@ def navbar():
     .red{color:red;font-weight:bold;}
     .orange{color:orange;font-weight:bold;}
     .blue{color:blue;font-weight:bold;}
+    table{border-collapse:collapse;width:100%;background:white;}
+    td,th{border:1px solid #ddd;padding:8px;text-align:left;}
+    th{background:#f0f0f0}
     </style>
     <h1>ESP.1 Deployment Tracker</h1>
     <div class="nav">
@@ -115,61 +109,18 @@ def color(status):
 # ---------------------------
 # DASHBOARD
 # ---------------------------
-@app.route("/", methods=["GET","POST"])
+@app.route("/")
 def dashboard():
     conn = db()
-    # Handle remarks submission
-    msg = ""
-    if request.method=="POST":
-        text = request.form.get("remark_text","")
-        if text.strip():
-            conn.execute("INSERT INTO remarks(text,time) VALUES(?,?)",(text,str(datetime.datetime.now())))
-            conn.commit()
-            msg="<b class='green'>Remark saved!</b>"
-    # Fetch remarks
-    remarks = conn.execute("SELECT * FROM remarks ORDER BY id DESC").fetchall()
-    # Fetch tickets ordered by start date/time
-    tickets = conn.execute("SELECT * FROM tickets ORDER BY start DESC").fetchall()
+    tickets = conn.execute("SELECT * FROM tickets ORDER BY datetime(start) ASC").fetchall()
     conn.close()
-    
     html = navbar()
-    html += f"<h2>Deployment Dashboard</h2>{msg}<br>"
-    
-    # Personal remarks area
-    html += """
-    <div style="margin-bottom:30px;">
-    <h3>Your Remarks:</h3>
-    <form method="post">
-        <textarea name="remark_text" rows="3" placeholder="Write your remarks here..."></textarea><br>
-        <button class="green-btn">Save Remark</button>
-    </form>
-    <div style="margin-top:10px;">
-    """
-    for r in remarks:
-        html += f"<div class='card'>{r['text']}<br><small>{r['time']}</small></div>"
-    html += "</div></div>"
-
-    # List tickets
-    html += "<h3>Tickets by Start Date/Time:</h3><div class='row'>"
+    html += "<h2>Deployment Dashboard (Sorted by Start Time)</h2>"
+    html += "<table><tr><th>BCR</th><th>Requestor</th><th>Start</th><th>End</th><th>Status</th></tr>"
     for t in tickets:
-        c=color(t["status"])
-        html += f"""
-        <div class='card col'>
-            <h4><span style="width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;background:{c};"></span>{t['bcr']}</h4>
-            <p>Status: <span class='{c}'>{t['status']}</span></p>
-            <p>Service: {t['service']}</p>
-            <p>Namespace: {t['namespace']}</p>
-            <p>Stage: {t['stage']}</p>
-            <p>Start: {t['start']}</p>
-            <p>End: {t['end']}</p>
-            <p>Build URL: <a href="{t['build_url']}" target="_blank">{t['build_url']}</a></p>
-            <p>Release URL: <a href="{t['release_url']}" target="_blank">{t['release_url']}</a></p>
-            <p>Release Branch: {t['release_branch']}</p>
-            <p>Build Number: {t['build_number']}</p>
-            <p><a href="/edit/{t['id']}">Edit</a></p>
-        </div>
-        """
-    html += "</div>"
+        c = color(t["status"])
+        html += f"<tr><td>{t['bcr']}</td><td>{t['requestor']}</td><td>{t['start']}</td><td>{t['end']}</td><td class='{c}'>{t['status']}</td></tr>"
+    html += "</table>"
     return html
 
 # ---------------------------
@@ -180,6 +131,7 @@ def create():
     msg=""
     if request.method=="POST":
         bcr = request.form["bcr"]
+        requestor = request.form["requestor"]
         service = request.form["service"]
         namespace = request.form["namespace"]
         stage = request.form["stage"]
@@ -193,45 +145,83 @@ def create():
         exist = conn.execute("SELECT * FROM tickets WHERE bcr=?",(bcr,)).fetchone()
         if exist: msg="<b class='red'>BCR already exists</b>"
         else:
-            cur=conn.execute("""
+            cur = conn.execute("""
                 INSERT INTO tickets
-                (bcr,service,namespace,stage,start,end,status,build_url,release_url,release_branch,build_number)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                (bcr,service,namespace,stage,start,end,"CREATED",build_url,release_url,release_branch,build_number)
+                (bcr,requestor,service,namespace,stage,start,end,status,build_url,release_url,release_branch,build_number)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (bcr,requestor,service,namespace,stage,start,end,"CREATED",build_url,release_url,release_branch,build_number)
             )
             conn.commit()
             log(cur.lastrowid,"CREATED","Ticket created")
             msg="<b class='green'>Ticket created successfully</b>"
         conn.close()
-
     html = navbar()
     html += f"<h2>Create Deployment Ticket</h2>{msg}"
-    # Place form at top-right corner
     html += """
     <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
-        <div style="background:#4CAF50;padding:20px;border-radius:8px;width:400px;">
+        <div style="width:400px;">
             <form method="post">
-            <div class="row">
-                <div class="col">
-                    BCR<br><input name="bcr" required><br><br>
-                    Service<br><input name="service"><br><br>
-                    Namespace<br><input name="namespace"><br><br>
-                    Stage<br><input name="stage"><br><br>
-                    Start<br><input name="start"><br><br>
-                    End<br><input name="end"><br><br>
-                </div>
-                <div class="col">
-                    Build URL<br><input name="build_url"><br><br>
-                    Release URL<br><input name="release_url"><br><br>
-                    Release Branch<br><input name="release_branch"><br><br>
-                    Build Number<br><input name="build_number"><br><br>
-                </div>
-            </div>
+            <b style='color:white;'>Create Ticket</b><br>
+            Requestor<br><input name="requestor"><br><br>
+            BCR<br><input name="bcr" required><br><br>
+            Start<br><input name="start" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
+            End<br><input name="end" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
             <button class="green-btn">Create Ticket</button>
             </form>
         </div>
     </div>
     """
+    return html
+
+# ---------------------------
+# TICKETS TAB
+# ---------------------------
+@app.route("/tickets")
+def tickets_tab():
+    search = request.args.get("q","")
+    conn = db()
+    if search:
+        rows = conn.execute("SELECT * FROM tickets WHERE bcr LIKE ?",("%"+search+"%",)).fetchall()
+    else:
+        rows = conn.execute("SELECT bcr,requestor,start,end FROM tickets ORDER BY datetime(start) ASC").fetchall()
+    conn.close()
+    html = navbar()
+    html += "<form>Search BCR: <input name='q'><button>Search</button></form><br>"
+    if search:
+        for t in rows:
+            c=color(t["status"])
+            html += f"<div class='card col'>"
+            html += f"<h4>{t['bcr']}</h4>"
+            for k in t.keys():
+                html += f"<p>{k}: {t[k]}</p>"
+            html += f"<p><a href='/edit/{t['id']}'>Edit</a></p></div>"
+    else:
+        html += "<table><tr><th>BCR</th><th>Requestor</th><th>Start</th><th>End</th></tr>"
+        for t in rows:
+            html += f"<tr><td>{t['bcr']}</td><td>{t['requestor']}</td><td>{t['start']}</td><td>{t['end']}</td></tr>"
+        html += "</table>"
+    return html
+
+# ---------------------------
+# HISTORY TAB
+# ---------------------------
+@app.route("/history")
+def history():
+    conn = db()
+    rows = conn.execute("""
+        SELECT t.bcr,h.status,h.note,h.time
+        FROM history h JOIN tickets t ON t.id=h.ticket_id
+        ORDER BY h.time DESC
+    """).fetchall()
+    conn.close()
+    html = navbar()
+    html += "<h2>History</h2><div class='row'>"
+    for r in rows:
+        c=color(r["status"])
+        html += f"<div class='card col'>"
+        html += f"<h4>{r['bcr']} | <span class='{c}'>{r['status']}</span></h4>"
+        html += f"<p>Note: {r['note']}</p><p>Time: {r['time']}</p></div>"
+    html += "</div>"
     return html
 
 # ---------------------------
@@ -242,134 +232,20 @@ def edit(id):
     conn = db()
     ticket = conn.execute("SELECT * FROM tickets WHERE id=?",(id,)).fetchone()
     if request.method=="POST":
-        bcr = request.form["bcr"]
-        service = request.form["service"]
-        namespace = request.form["namespace"]
-        stage = request.form["stage"]
-        start = request.form["start"]
-        end = request.form["end"]
-        status = request.form["status"]
-        build_url = request.form.get("build_url","")
-        release_url = request.form.get("release_url","")
-        release_branch = request.form.get("release_branch","")
-        build_number = request.form.get("build_number","")
-        conn.execute("""
-            UPDATE tickets
-            SET bcr=?,service=?,namespace=?,stage=?,start=?,end=?,status=?,
-                build_url=?,release_url=?,release_branch=?,build_number=?
-            WHERE id=?
-        """,(bcr,service,namespace,stage,start,end,status,build_url,release_url,release_branch,build_number,id))
+        fields = ["bcr","requestor","service","namespace","stage","start","end","status","build_url","release_url","release_branch","build_number"]
+        values = [request.form.get(f,"") for f in fields]
+        conn.execute(f"UPDATE tickets SET {','.join([f'{f}=?' for f in fields])} WHERE id=?",values+[id])
         conn.commit()
-        log(id,status,"Status updated")
+        log(id,request.form.get("status",""),"Status updated")
         conn.close()
         return redirect("/tickets")
-    # Fallback values
-    build_url = ticket["build_url"] if "build_url" in ticket.keys() else ""
-    release_url = ticket["release_url"] if "release_url" in ticket.keys() else ""
-    release_branch = ticket["release_branch"] if "release_branch" in ticket.keys() else ""
-    build_number = ticket["build_number"] if "build_number" in ticket.keys() else ""
-    conn.close()
-
     html = navbar()
     html += "<h2>Edit Ticket</h2>"
-    html += """
-    <div class="row">
-        <div class="col">
-            <form method="post">
-                BCR<br><input name="bcr" value="{bcr}"><br><br>
-                Service<br><input name="service" value="{service}"><br><br>
-                Namespace<br><input name="namespace" value="{namespace}"><br><br>
-                Stage<br><input name="stage" value="{stage}"><br><br>
-                Status<br><input name="status" value="{status}"><br><br>
-        </div>
-        <div class="col">
-                Start<br><input name="start" value="{start}"><br><br>
-                End<br><input name="end" value="{end}"><br><br>
-                Build URL<br><input name="build_url" value="{build_url}"><br><br>
-                Release URL<br><input name="release_url" value="{release_url}"><br><br>
-                Release Branch<br><input name="release_branch" value="{release_branch}"><br><br>
-                Build Number<br><input name="build_number" value="{build_number}"><br><br>
-                <button class="green-btn">Save Changes</button>
-            </form>
-        </div>
-    </div>
-    """.format(**ticket, build_url=build_url, release_url=release_url, release_branch=release_branch, build_number=build_number)
-    return html
-
-# ---------------------------
-# TICKETS TAB (side-by-side)
-# ---------------------------
-@app.route("/tickets")
-def tickets_tab():
-    search = request.args.get("q","")
-    conn=db()
-    rows = conn.execute(
-        "SELECT * FROM tickets WHERE bcr LIKE ? ORDER BY start DESC",
-        (f"%{search}%",)
-    ).fetchall()
+    html += "<form method='post'>"
+    for f in ticket.keys():
+        html += f"{f}<br><input name='{f}' value='{ticket[f]}'><br><br>"
+    html += "<button class='green-btn'>Save Changes</button></form>"
     conn.close()
-    html=navbar()
-    html += """
-    <form style="margin-bottom:10px;">
-        Search BCR: <input name="q" placeholder="Enter BCR">
-        <button>Search</button>
-    </form>
-    <div class="row">
-    """
-    for t in rows:
-        c=color(t["status"])
-        html += f"""
-        <div class='card col'>
-            <h4><span style="width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;background:{c};"></span>{t['bcr']}</h4>
-            <p>Status: <span class='{c}'>{t['status']}</span></p>
-            <p>Service: {t['service']}</p>
-            <p>Namespace: {t['namespace']}</p>
-            <p>Stage: {t['stage']}</p>
-            <p>Start: {t['start']}</p>
-            <p>End: {t['end']}</p>
-            <p>Build URL: <a href="{t['build_url']}" target="_blank">{t['build_url']}</a></p>
-            <p>Release URL: <a href="{t['release_url']}" target="_blank">{t['release_url']}</a></p>
-            <p>Release Branch: {t['release_branch']}</p>
-            <p>Build Number: {t['build_number']}</p>
-            <p><a href="/edit/{t['id']}">Edit</a></p>
-        </div>
-        """
-    html += "</div>"
-    return html
-
-# ---------------------------
-# HISTORY TAB (modern cards)
-# ---------------------------
-@app.route("/history")
-def history():
-    search_bcr=request.args.get("q","")
-    conn=db()
-    query="SELECT t.bcr,h.status,h.note,h.time FROM history h JOIN tickets t ON t.id=h.ticket_id"
-    params=[]
-    if search_bcr:
-        query+=" WHERE t.bcr LIKE ?"
-        params=[f"%{search_bcr}%"]
-    query+=" ORDER BY h.time DESC"
-    rows=conn.execute(query,params).fetchall()
-    conn.close()
-    html=navbar()
-    html += """
-    <form style="margin-bottom:10px;">
-        Search BCR: <input name="q" placeholder="Enter BCR">
-        <button>Search</button>
-    </form>
-    <div class='row'>
-    """
-    for r in rows:
-        c=color(r["status"])
-        html += f"""
-        <div class='card col'>
-            <h4><span style="width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;background:{c};"></span>{r['bcr']} | {r['status']}</h4>
-            <p>Note: {r['note']}</p>
-            <p>Time: {r['time']}</p>
-        </div>
-        """
-    html += "</div>"
     return html
 
 # ---------------------------
