@@ -77,7 +77,7 @@ def navbar():
     .row{display:flex;gap:20px;flex-wrap:wrap;}
     .col{flex:1;min-width:250px;}
     .card{background:white;padding:15px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.15);margin-bottom:20px;}
-    .green-btn{background:#4CAF50;color:white;padding:10px 15px;border:none;border-radius:5px;cursor:pointer;}
+    .green-btn{background:#4CAF50;color:white;padding:10px 15px;border:none;border-radius:5px;cursor:pointer;position:absolute;top:10px;right:10px;}
     .green{color:green;font-weight:bold;}
     .red{color:red;font-weight:bold;}
     .orange{color:orange;font-weight:bold;}
@@ -85,6 +85,7 @@ def navbar():
     table{border-collapse:collapse;width:100%;background:white;}
     td,th{border:1px solid #ddd;padding:8px;text-align:left;}
     th{background:#f0f0f0}
+    .form-container{position:relative;border:1px solid #ccc;padding:20px;background:white;border-radius:8px;}
     </style>
     <h1>ESP.1 Deployment Tracker</h1>
     <div class="nav">
@@ -100,7 +101,7 @@ def navbar():
 # STATUS COLOR
 # ---------------------------
 def color(status):
-    s = status.lower()
+    s = (status or "").lower()
     if "fail" in s: return "red"
     if "deploy" in s: return "orange"
     if "done" in s or "complete" in s: return "green"
@@ -121,6 +122,7 @@ def dashboard():
         c = color(t["status"])
         html += f"<tr><td>{t['bcr']}</td><td>{t['requestor']}</td><td>{t['start']}</td><td>{t['end']}</td><td class='{c}'>{t['status']}</td></tr>"
     html += "</table>"
+    html += "<br><b>Personal Remarks:</b> <textarea placeholder='Write your notes here...' style='width:100%;height:80px;'></textarea>"
     return html
 
 # ---------------------------
@@ -130,13 +132,13 @@ def dashboard():
 def create():
     msg=""
     if request.method=="POST":
-        bcr = request.form["bcr"]
-        requestor = request.form["requestor"]
-        service = request.form["service"]
-        namespace = request.form["namespace"]
-        stage = request.form["stage"]
-        start = request.form["start"]
-        end = request.form["end"]
+        bcr = request.form.get("bcr","")
+        requestor = request.form.get("requestor","")
+        service = request.form.get("service","")
+        namespace = request.form.get("namespace","")
+        stage = request.form.get("stage","")
+        start = request.form.get("start","")
+        end = request.form.get("end","")
         build_url = request.form.get("build_url","")
         release_url = request.form.get("release_url","")
         release_branch = request.form.get("release_branch","")
@@ -158,17 +160,27 @@ def create():
     html = navbar()
     html += f"<h2>Create Deployment Ticket</h2>{msg}"
     html += """
-    <div style="display:flex;justify-content:flex-end;margin-bottom:20px;">
-        <div style="width:400px;">
-            <form method="post">
-            <b style='color:white;'>Create Ticket</b><br>
-            Requestor<br><input name="requestor"><br><br>
-            BCR<br><input name="bcr" required><br><br>
-            Start<br><input name="start" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
-            End<br><input name="end" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
-            <button class="green-btn">Create Ticket</button>
-            </form>
+    <div class="form-container">
+        <form method="post">
+        <div class="row">
+            <div class="col">
+                Requestor<br><input name="requestor"><br><br>
+                BCR<br><input name="bcr" required><br><br>
+                Service<br><input name="service"><br><br>
+                Namespace<br><input name="namespace"><br><br>
+            </div>
+            <div class="col">
+                Stage<br><input name="stage"><br><br>
+                Start<br><input name="start" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
+                End<br><input name="end" placeholder="YYYY-MM-DD HH:MM:SS"><br><br>
+                Build URL<br><input name="build_url"><br><br>
+                Release URL<br><input name="release_url"><br><br>
+                Release Branch<br><input name="release_branch"><br><br>
+                Build Number<br><input name="build_number"><br><br>
+            </div>
         </div>
+        <button class="green-btn">Create Ticket</button>
+        </form>
     </div>
     """
     return html
