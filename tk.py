@@ -4,7 +4,6 @@ import datetime
 import os
 
 app = Flask(__name__)
-
 DB = os.path.join(os.path.dirname(__file__), "esp1.db")
 
 # ---------------------------
@@ -48,7 +47,6 @@ def init():
     """)
     conn.commit()
     conn.close()
-
 init()
 
 # ---------------------------
@@ -76,15 +74,13 @@ def navbar():
     button{padding:6px 12px;margin-top:5px;}
     .row{display:flex;gap:20px;flex-wrap:wrap;}
     .col{flex:1;min-width:250px;}
-    .card{background:white;padding:15px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.15);margin-bottom:20px;}
+    .card{background:white;padding:15px;border-radius:8px;box-shadow:0 3px 8px rgba(0,0,0,0.15);margin-bottom:20px;position:relative;transition:transform 0.2s;}
+    .card:hover{transform:translateY(-5px);}
     .green-btn{background:#4CAF50;color:white;padding:10px 15px;border:none;border-radius:5px;cursor:pointer;position:absolute;top:10px;right:10px;}
     .green{color:green;font-weight:bold;}
     .red{color:red;font-weight:bold;}
     .orange{color:orange;font-weight:bold;}
     .blue{color:blue;font-weight:bold;}
-    table{border-collapse:collapse;width:100%;background:white;}
-    td,th{border:1px solid #ddd;padding:8px;text-align:left;}
-    th{background:#f0f0f0}
     .form-container{position:relative;border:1px solid #ccc;padding:20px;background:white;border-radius:8px;}
     </style>
     <h1>ESP.1 Deployment Tracker</h1>
@@ -108,7 +104,7 @@ def color(status):
     return "blue"
 
 # ---------------------------
-# DASHBOARD
+# DASHBOARD (TIMELINE CARDS)
 # ---------------------------
 @app.route("/")
 def dashboard():
@@ -116,12 +112,25 @@ def dashboard():
     tickets = conn.execute("SELECT * FROM tickets ORDER BY datetime(start) ASC").fetchall()
     conn.close()
     html = navbar()
-    html += "<h2>Deployment Dashboard (Sorted by Start Time)</h2>"
-    html += "<table><tr><th>BCR</th><th>Requestor</th><th>Start</th><th>End</th><th>Status</th></tr>"
+    html += "<h2>Deployment Timeline</h2><div class='row'>"
     for t in tickets:
         c = color(t["status"])
-        html += f"<tr><td>{t['bcr']}</td><td>{t['requestor']}</td><td>{t['start']}</td><td>{t['end']}</td><td class='{c}'>{t['status']}</td></tr>"
-    html += "</table>"
+        html += f"""
+        <div class='card col'>
+            <h3>{t['bcr']} <span class='{c}'>[{t['status']}]</span></h3>
+            <p><b>Requestor:</b> {t['requestor']}</p>
+            <p><b>Service:</b> {t['service']}</p>
+            <p><b>Namespace:</b> {t['namespace']}</p>
+            <p><b>Stage:</b> {t['stage']}</p>
+            <p><b>Start:</b> {t['start']}</p>
+            <p><b>End:</b> {t['end']}</p>
+            <p><b>Build URL:</b> {t['build_url']}</p>
+            <p><b>Release URL:</b> {t['release_url']}</p>
+            <p><b>Branch:</b> {t['release_branch']}</p>
+            <p><b>Build Number:</b> {t['build_number']}</p>
+        </div>
+        """
+    html += "</div>"
     html += "<br><b>Personal Remarks:</b> <textarea placeholder='Write your notes here...' style='width:100%;height:80px;'></textarea>"
     return html
 
