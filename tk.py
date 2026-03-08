@@ -3,7 +3,6 @@ import sqlite3
 import datetime
 
 app = Flask(__name__)
-
 DB = "esp1.db"
 
 # ---------------------------
@@ -20,6 +19,7 @@ def db():
 def init():
     conn = db()
 
+    # Add new columns safely if not exist
     conn.execute("""
     CREATE TABLE IF NOT EXISTS tickets(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,21 +73,17 @@ def navbar():
     body{font-family:Arial;margin:40px;background:#f7f7f7}
     h1{color:#333}
     .nav a{margin-right:20px;text-decoration:none;font-weight:bold;color:#0077cc;}
-    table{border-collapse:collapse;width:100%;background:white;}
-    td,th{border:1px solid #ddd;padding:8px;text-align:left;}
-    th{background:#f0f0f0}
+    input{padding:6px;width:100%;}
+    button{padding:6px 12px;margin-top:5px;}
+    .row{display:flex;gap:20px;}
+    .col{flex:1;}
     .green{color:green;font-weight:bold}
     .red{color:red;font-weight:bold}
     .orange{color:orange;font-weight:bold}
     .blue{color:blue;font-weight:bold}
-    input{padding:6px;width:100%;}
-    button{padding:6px 12px}
-    .row{display:flex;gap:20px;}
-    .col{flex:1;}
     </style>
 
     <h1>ESP.1 Deployment Tracker</h1>
-
     <div class="nav">
     <a href="/">Dashboard</a>
     <a href="/create">Create Ticket</a>
@@ -121,19 +117,19 @@ def dashboard():
 
     return navbar()+f"""
     <h2>Deployment Dashboard</h2>
-    <table>
-    <tr>
-        <th>Total Deployments</th>
-        <th>Running</th>
-        <th>Completed</th>
-        <th>Failed</th>
-    </tr>
-    <tr>
-        <td>{total}</td>
-        <td class="orange">{running}</td>
-        <td class="green">{done}</td>
-        <td class="red">{failed}</td>
-    </tr>
+    <table border="1" cellpadding="8" style="border-collapse:collapse;width:50%;background:white;">
+        <tr>
+            <th>Total Deployments</th>
+            <th>Running</th>
+            <th>Completed</th>
+            <th>Failed</th>
+        </tr>
+        <tr>
+            <td>{total}</td>
+            <td class="orange">{running}</td>
+            <td class="green">{done}</td>
+            <td class="red">{failed}</td>
+        </tr>
     </table>
     """
 
@@ -150,10 +146,10 @@ def create():
         stage = request.form["stage"]
         start = request.form["start"]
         end = request.form["end"]
-        build_url = request.form["build_url"]
-        release_url = request.form["release_url"]
-        release_branch = request.form["release_branch"]
-        build_number = request.form["build_number"]
+        build_url = request.form.get("build_url","")
+        release_url = request.form.get("release_url","")
+        release_branch = request.form.get("release_branch","")
+        build_number = request.form.get("build_number","")
 
         conn = db()
         exist = conn.execute("SELECT * FROM tickets WHERE bcr=?", (bcr,)).fetchone()
@@ -196,11 +192,11 @@ def create():
     """
 
 # ---------------------------
-# TICKETS LIST
+# TICKETS LIST (CARD VIEW)
 # ---------------------------
 @app.route("/tickets")
 def tickets():
-    search = request.args.get("q","")
+    search = request.args.get("q", "")
     conn = db()
     if search:
         rows = conn.execute("SELECT * FROM tickets WHERE bcr LIKE ?", ("%"+search+"%",)).fetchall()
@@ -211,43 +207,39 @@ def tickets():
     html = """
     <h2>Tickets</h2>
     <form>
-    Search BCR:
-    <input name="q">
-    <button>Search</button>
+        Search BCR:
+        <input name="q" placeholder="Enter BCR">
+        <button>Search</button>
     </form>
     <br>
-    <table>
-    <tr>
-        <th>BCR</th>
-        <th>Service</th>
-        <th>Namespace</th>
-        <th>Stage</th>
-        <th>Status</th>
-        <th>Build URL</th>
-        <th>Release URL</th>
-        <th>Release Branch</th>
-        <th>Build Number</th>
-        <th>Edit</th>
-    </tr>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;">
     """
+
     for r in rows:
         c = color(r["status"])
+        build_url = r["build_url"] if "build_url" in r.keys() else ""
+        release_url = r["release_url"] if "release_url" in r.keys() else ""
+        release_branch = r["release_branch"] if "release_branch" in r.keys() else ""
+        build_number = r["build_number"] if "build_number" in r.keys() else ""
         html += f"""
-        <tr>
-        <td>{r["bcr"]}</td>
-        <td>{r["service"]}</td>
-        <td>{r["namespace"]}</td>
-        <td>{r["stage"]}</td>
-        <td class="{c}">{r["status"]}</td>
-        <td>{r["build_url"]}</td>
-        <td>{r["release_url"]}</td>
-        <td>{r["release_branch"]}</td>
-        <td>{r["build_number"]}</td>
-        <td><a href="/edit/{r["id"]}">Edit</a></td>
-        </tr>
+        <div style="border:1px solid #ddd;background:white;padding:20px;width:300px;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.1);">
+            <h3 style="margin:0 0 10px 0;">BCR: {r['bcr']}</h3>
+            <p><b>Status:</b> <span class="{c}">{r['status']}</span></p>
+            <p><b>Service:</b> {r['service']}</p>
+            <p><b>Namespace:</b> {r['namespace']}</p>
+            <p><b>Stage:</b> {r['stage']}</p>
+            <p><b>Start:</b> {r['start']}</p>
+            <p><b>End:</b> {r['end']}</p>
+            <p><b>Build URL:</b> <a href="{build_url}" target="_blank">{build_url}</a></p>
+            <p><b>Release URL:</b> <a href="{release_url}" target="_blank">{release_url}</a></p>
+            <p><b>Release Branch:</b> {release_branch}</p>
+            <p><b>Build Number:</b> {build_number}</p>
+            <p><a href="/edit/{r['id']}">Edit Ticket</a></p>
+        </div>
         """
-    html += "</table>"
-    return navbar()+html
+
+    html += "</div>"
+    return navbar() + html
 
 # ---------------------------
 # EDIT TICKET
@@ -263,10 +255,10 @@ def edit(id):
         start = request.form["start"]
         end = request.form["end"]
         status = request.form["status"]
-        build_url = request.form["build_url"]
-        release_url = request.form["release_url"]
-        release_branch = request.form["release_branch"]
-        build_number = request.form["build_number"]
+        build_url = request.form.get("build_url","")
+        release_url = request.form.get("release_url","")
+        release_branch = request.form.get("release_branch","")
+        build_number = request.form.get("build_number","")
 
         conn.execute("""
             UPDATE tickets
@@ -297,10 +289,10 @@ def edit(id):
             <div class="col">
                 Start<br><input name="start" value="{ticket['start']}"><br><br>
                 End<br><input name="end" value="{ticket['end']}"><br><br>
-                Build URL<br><input name="build_url" value="{ticket['build_url']}"><br><br>
-                Release URL<br><input name="release_url" value="{ticket['release_url']}"><br><br>
-                Release Branch<br><input name="release_branch" value="{ticket['release_branch']}"><br><br>
-                Build Number<br><input name="build_number" value="{ticket['build_number']}"><br><br>
+                Build URL<br><input name="build_url" value="{ticket.get('build_url','')}"><br><br>
+                Release URL<br><input name="release_url" value="{ticket.get('release_url','')}"><br><br>
+                Release Branch<br><input name="release_branch" value="{ticket.get('release_branch','')}"><br><br>
+                Build Number<br><input name="build_number" value="{ticket.get('build_number','')}"><br><br>
             </div>
         </div>
         <button>Save Changes</button>
@@ -308,40 +300,54 @@ def edit(id):
     """
 
 # ---------------------------
-# HISTORY PAGE
+# HISTORY PAGE (GIT-TIMELINE STYLE)
 # ---------------------------
 @app.route("/history")
 def history():
     conn = db()
     rows = conn.execute("""
-        SELECT t.bcr,h.status,h.note,h.time
+        SELECT t.bcr, h.status, h.note, h.time
         FROM history h
         JOIN tickets t ON t.id=h.ticket_id
-        ORDER BY h.id DESC
+        ORDER BY h.time DESC
     """).fetchall()
     conn.close()
 
     html = """
     <h2>Status History</h2>
-    <table>
-    <tr>
-        <th>BCR</th>
-        <th>Status</th>
-        <th>Note</th>
-        <th>Time</th>
-    </tr>
+    <style>
+        .timeline{position:relative;max-width:800px;margin:0 auto;}
+        .timeline::after{content:'';position:absolute;width:6px;background:#ddd;top:0;bottom:0;left:50%;margin-left:-3px;}
+        .entry{padding:10px 40px;position:relative;background:white;width:50%;border-radius:6px;margin-bottom:20px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+        .entry.left{left:0;}
+        .entry.right{left:50%;}
+        .entry::after{content:"";position:absolute;width:20px;height:20px;background:white;border:4px solid #0077cc;top:15px;right:-10px;border-radius:50%;z-index:1;}
+        .entry.right::after{left:-10px;}
+        .entry h3{margin:0;font-size:16px;color:#0077cc;}
+        .entry p{margin:5px 0;font-size:14px;}
+        .green{color:green;font-weight:bold}
+        .red{color:red;font-weight:bold}
+        .orange{color:orange;font-weight:bold}
+        .blue{color:blue;font-weight:bold}
+    </style>
+    <div class="timeline">
     """
+
+    side = True  # alternate left/right
     for r in rows:
+        c = color(r["status"])
+        cls = "left" if side else "right"
+        side = not side
         html += f"""
-        <tr>
-        <td>{r['bcr']}</td>
-        <td>{r['status']}</td>
-        <td>{r['note']}</td>
-        <td>{r['time']}</td>
-        </tr>
+        <div class="entry {cls}">
+            <h3>BCR: {r['bcr']} | Status: <span class="{c}">{r['status']}</span></h3>
+            <p><b>Note:</b> {r['note']}</p>
+            <p><b>Time:</b> {r['time']}</p>
+        </div>
         """
-    html += "</table>"
-    return navbar()+html
+
+    html += "</div>"
+    return navbar() + html
 
 # ---------------------------
 # RUN SERVER
