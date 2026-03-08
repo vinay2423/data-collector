@@ -4,20 +4,24 @@ import datetime
 
 app = Flask(__name__)
 
-DB="esp1.db"
+DB = "esp1.db"
 
 
-# -----------------------
-# DATABASE
-# -----------------------
-
+# ---------------------------
+# DATABASE CONNECTION
+# ---------------------------
 def db():
-    return sqlite3.connect(DB)
+    conn = sqlite3.connect(DB, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
+# ---------------------------
+# DATABASE INIT
+# ---------------------------
 def init():
 
-    conn=db()
+    conn = db()
 
     conn.execute("""
     CREATE TABLE IF NOT EXISTS tickets(
@@ -49,57 +53,63 @@ def init():
 init()
 
 
-# -----------------------
+# ---------------------------
 # HISTORY LOGGER
-# -----------------------
+# ---------------------------
+def log(ticket_id, status, note):
 
-def log(ticket_id,status,note):
+    conn = db()
 
-    conn=db()
-
-    conn.execute("""
-    INSERT INTO history(ticket_id,status,note,time)
-    VALUES(?,?,?,?)
-    """,
-    (ticket_id,status,note,str(datetime.datetime.now()))
+    conn.execute(
+        "INSERT INTO history(ticket_id,status,note,time) VALUES(?,?,?,?)",
+        (ticket_id, status, note, str(datetime.datetime.now()))
     )
 
     conn.commit()
     conn.close()
 
 
-# -----------------------
-# NAVBAR
-# -----------------------
-
+# ---------------------------
+# NAVBAR UI
+# ---------------------------
 def navbar():
 
     return """
 
     <style>
 
-    body{font-family:Arial;margin:40px}
+    body{font-family:Arial;margin:40px;background:#f7f7f7}
+
+    h1{color:#333}
 
     .nav a{
         margin-right:20px;
         text-decoration:none;
         font-weight:bold;
+        color:#0077cc;
     }
 
     table{
         border-collapse:collapse;
         width:100%;
+        background:white;
     }
 
     td,th{
         border:1px solid #ddd;
         padding:8px;
+        text-align:left;
     }
+
+    th{background:#f0f0f0}
 
     .green{color:green;font-weight:bold}
     .red{color:red;font-weight:bold}
     .orange{color:orange;font-weight:bold}
     .blue{color:blue;font-weight:bold}
+
+    input{padding:6px;width:300px}
+    button{padding:6px 12px}
 
     </style>
 
@@ -115,17 +125,15 @@ def navbar():
     </div>
 
     <hr><br>
-
     """
 
 
-# -----------------------
+# ---------------------------
 # STATUS COLOR
-# -----------------------
-
+# ---------------------------
 def color(status):
 
-    s=status.lower()
+    s = status.lower()
 
     if "fail" in s:
         return "red"
@@ -139,27 +147,26 @@ def color(status):
     return "blue"
 
 
-# -----------------------
+# ---------------------------
 # DASHBOARD
-# -----------------------
-
+# ---------------------------
 @app.route("/")
 def dashboard():
 
-    conn=db()
+    conn = db()
 
-    total=conn.execute("SELECT count(*) FROM tickets").fetchone()[0]
+    total = conn.execute("SELECT count(*) FROM tickets").fetchone()[0]
 
-    failed=conn.execute(
-    "SELECT count(*) FROM tickets WHERE status LIKE '%fail%'"
+    running = conn.execute(
+        "SELECT count(*) FROM tickets WHERE status LIKE '%deploy%'"
     ).fetchone()[0]
 
-    running=conn.execute(
-    "SELECT count(*) FROM tickets WHERE status LIKE '%deploy%'"
+    done = conn.execute(
+        "SELECT count(*) FROM tickets WHERE status LIKE '%done%' OR status LIKE '%complete%'"
     ).fetchone()[0]
 
-    done=conn.execute(
-    "SELECT count(*) FROM tickets WHERE status LIKE '%done%' OR status LIKE '%complete%'"
+    failed = conn.execute(
+        "SELECT count(*) FROM tickets WHERE status LIKE '%fail%'"
     ).fetchone()[0]
 
     conn.close()
@@ -179,60 +186,57 @@ def dashboard():
 
     <tr>
     <td>{total}</td>
-    <td class='orange'>{running}</td>
-    <td class='green'>{done}</td>
-    <td class='red'>{failed}</td>
+    <td class="orange">{running}</td>
+    <td class="green">{done}</td>
+    <td class="red">{failed}</td>
     </tr>
 
     </table>
-
     """
 
 
-# -----------------------
+# ---------------------------
 # CREATE TICKET
-# -----------------------
-
-@app.route("/create",methods=["GET","POST"])
+# ---------------------------
+@app.route("/create", methods=["GET", "POST"])
 def create():
 
-    msg=""
+    msg = ""
 
-    if request.method=="POST":
+    if request.method == "POST":
 
-        bcr=request.form["bcr"]
-        service=request.form["service"]
-        namespace=request.form["namespace"]
-        stage=request.form["stage"]
-        start=request.form["start"]
-        end=request.form["end"]
+        bcr = request.form["bcr"]
+        service = request.form["service"]
+        namespace = request.form["namespace"]
+        stage = request.form["stage"]
+        start = request.form["start"]
+        end = request.form["end"]
 
-        conn=db()
+        conn = db()
 
-        exist=conn.execute(
-        "SELECT * FROM tickets WHERE bcr=?",
-        (bcr,)
+        exist = conn.execute(
+            "SELECT * FROM tickets WHERE bcr=?",
+            (bcr,)
         ).fetchone()
 
         if exist:
 
-            msg="<b class='red'>BCR already exists</b>"
+            msg = "<b class='red'>BCR already exists</b>"
 
         else:
 
-            cur=conn.execute("""
-            INSERT INTO tickets
-            (bcr,service,namespace,stage,start,end,status)
-            VALUES(?,?,?,?,?,?,?)
-            """,
-            (bcr,service,namespace,stage,start,end,"CREATED")
+            cur = conn.execute(
+                """INSERT INTO tickets
+                (bcr,service,namespace,stage,start,end,status)
+                VALUES(?,?,?,?,?,?,?)""",
+                (bcr, service, namespace, stage, start, end, "CREATED")
             )
 
             conn.commit()
 
-            log(cur.lastrowid,"CREATED","Ticket created")
+            log(cur.lastrowid, "CREATED", "Ticket created")
 
-            msg="<b class='green'>Ticket Created</b>"
+            msg = "<b class='green'>Ticket created successfully</b>"
 
         conn.close()
 
@@ -256,45 +260,41 @@ def create():
     Stage<br>
     <input name="stage"><br><br>
 
-    Start<br>
+    Start Time<br>
     <input name="start"><br><br>
 
-    End<br>
+    End Time<br>
     <input name="end"><br><br>
 
-    <button>Create</button>
+    <button>Create Ticket</button>
 
     </form>
     """
 
 
-# -----------------------
+# ---------------------------
 # TICKETS LIST
-# -----------------------
-
+# ---------------------------
 @app.route("/tickets")
 def tickets():
 
-    search=request.args.get("q","")
+    search = request.args.get("q","")
 
-    conn=db()
+    conn = db()
 
     if search:
-
-        rows=conn.execute(
-        "SELECT * FROM tickets WHERE bcr LIKE ?",
-        ("%"+search+"%",)
+        rows = conn.execute(
+            "SELECT * FROM tickets WHERE bcr LIKE ?",
+            ("%"+search+"%",)
         ).fetchall()
-
     else:
-
-        rows=conn.execute(
-        "SELECT * FROM tickets ORDER BY id DESC"
+        rows = conn.execute(
+            "SELECT * FROM tickets ORDER BY id DESC"
         ).fetchall()
 
     conn.close()
 
-    html="""
+    html = """
 
     <h2>Tickets</h2>
 
@@ -323,71 +323,66 @@ def tickets():
 
     for r in rows:
 
-        c=color(r[7])
+        c = color(r["status"])
 
-        html+=f"""
+        html += f"""
 
         <tr>
 
-        <td>{r[1]}</td>
-        <td>{r[2]}</td>
-        <td>{r[3]}</td>
-        <td>{r[4]}</td>
-        <td class="{c}">{r[7]}</td>
+        <td>{r["bcr"]}</td>
+        <td>{r["service"]}</td>
+        <td>{r["namespace"]}</td>
+        <td>{r["stage"]}</td>
+        <td class="{c}">{r["status"]}</td>
 
         <td>
-        <a href="/edit/{r[0]}">Edit</a>
+        <a href="/edit/{r["id"]}">Edit</a>
         </td>
 
         </tr>
-
         """
 
-    html+="</table>"
+    html += "</table>"
 
     return navbar()+html
 
 
-# -----------------------
+# ---------------------------
 # EDIT TICKET
-# -----------------------
-
-@app.route("/edit/<int:id>",methods=["GET","POST"])
+# ---------------------------
+@app.route("/edit/<int:id>", methods=["GET","POST"])
 def edit(id):
 
-    conn=db()
+    conn = db()
 
-    if request.method=="POST":
+    if request.method == "POST":
 
-        bcr=request.form["bcr"]
-        service=request.form["service"]
-        namespace=request.form["namespace"]
-        stage=request.form["stage"]
-        start=request.form["start"]
-        end=request.form["end"]
-        status=request.form["status"]
+        bcr = request.form["bcr"]
+        service = request.form["service"]
+        namespace = request.form["namespace"]
+        stage = request.form["stage"]
+        start = request.form["start"]
+        end = request.form["end"]
+        status = request.form["status"]
 
-        conn.execute("""
-
-        UPDATE tickets
-        SET bcr=?,service=?,namespace=?,stage=?,start=?,end=?,status=?
-        WHERE id=?
-
-        """,
-        (bcr,service,namespace,stage,start,end,status,id)
+        conn.execute(
+            """UPDATE tickets
+            SET bcr=?,service=?,namespace=?,stage=?,start=?,end=?,status=?
+            WHERE id=?""",
+            (bcr,service,namespace,stage,start,end,status,id)
         )
 
         conn.commit()
 
-        log(id,status,"Status updated manually")
+        log(id,status,"Status updated")
 
         conn.close()
 
         return redirect("/tickets")
 
-    ticket=conn.execute(
-    "SELECT * FROM tickets WHERE id=?",
-    (id,)
+    ticket = conn.execute(
+        "SELECT * FROM tickets WHERE id=?",
+        (id,)
     ).fetchone()
 
     conn.close()
@@ -399,53 +394,50 @@ def edit(id):
     <form method="post">
 
     BCR<br>
-    <input name="bcr" value="{ticket[1]}"><br><br>
+    <input name="bcr" value="{ticket["bcr"]}"><br><br>
 
     Service<br>
-    <input name="service" value="{ticket[2]}"><br><br>
+    <input name="service" value="{ticket["service"]}"><br><br>
 
     Namespace<br>
-    <input name="namespace" value="{ticket[3]}"><br><br>
+    <input name="namespace" value="{ticket["namespace"]}"><br><br>
 
     Stage<br>
-    <input name="stage" value="{ticket[4]}"><br><br>
+    <input name="stage" value="{ticket["stage"]}"><br><br>
 
     Start<br>
-    <input name="start" value="{ticket[5]}"><br><br>
+    <input name="start" value="{ticket["start"]}"><br><br>
 
     End<br>
-    <input name="end" value="{ticket[6]}"><br><br>
+    <input name="end" value="{ticket["end"]}"><br><br>
 
     Status<br>
-    <input name="status" value="{ticket[7]}"><br><br>
+    <input name="status" value="{ticket["status"]}"><br><br>
 
-    <button>Save</button>
+    <button>Save Changes</button>
 
     </form>
     """
 
 
-# -----------------------
-# HISTORY
-# -----------------------
-
+# ---------------------------
+# HISTORY PAGE
+# ---------------------------
 @app.route("/history")
 def history():
 
-    conn=db()
+    conn = db()
 
-    rows=conn.execute("""
-
+    rows = conn.execute("""
     SELECT t.bcr,h.status,h.note,h.time
     FROM history h
     JOIN tickets t ON t.id=h.ticket_id
     ORDER BY h.id DESC
-
     """).fetchall()
 
     conn.close()
 
-    html="""
+    html = """
 
     <h2>Status History</h2>
 
@@ -457,32 +449,29 @@ def history():
     <th>Note</th>
     <th>Time</th>
     </tr>
-
     """
 
     for r in rows:
 
-        html+=f"""
+        html += f"""
 
         <tr>
 
-        <td>{r[0]}</td>
-        <td>{r[1]}</td>
-        <td>{r[2]}</td>
-        <td>{r[3]}</td>
+        <td>{r["bcr"]}</td>
+        <td>{r["status"]}</td>
+        <td>{r["note"]}</td>
+        <td>{r["time"]}</td>
 
         </tr>
-
         """
 
-    html+="</table>"
+    html += "</table>"
 
     return navbar()+html
 
 
-# -----------------------
-# RUN APP
-# -----------------------
-
-if __name__=="__main__":
-    app.run(debug=True)
+# ---------------------------
+# RUN SERVER
+# ---------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
