@@ -15,25 +15,15 @@ def db():
     return conn
 
 # ---------------------------
-# DATABASE INIT
+# DATABASE INIT WITH AUTO-COLUMN UPDATE
 # ---------------------------
 def init():
     conn = db()
+    # Create tables if not exist
     conn.execute("""
     CREATE TABLE IF NOT EXISTS tickets(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bcr TEXT UNIQUE,
-        requestor TEXT,
-        service TEXT,
-        namespace TEXT,
-        stage TEXT,
-        start TEXT,
-        end TEXT,
-        status TEXT,
-        build_url TEXT,
-        release_url TEXT,
-        release_branch TEXT,
-        build_number TEXT
+        bcr TEXT UNIQUE
     )
     """)
     conn.execute("""
@@ -45,8 +35,33 @@ def init():
         time TEXT
     )
     """)
+
+    # Required columns with types
+    required_columns = {
+        "requestor": "TEXT",
+        "service": "TEXT",
+        "namespace": "TEXT",
+        "stage": "TEXT",
+        "start": "TEXT",
+        "end": "TEXT",
+        "status": "TEXT",
+        "build_url": "TEXT",
+        "release_url": "TEXT",
+        "release_branch": "TEXT",
+        "build_number": "TEXT"
+    }
+
+    # Get existing columns
+    existing = [row["name"] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()]
+
+    # Add missing columns automatically
+    for col, col_type in required_columns.items():
+        if col not in existing:
+            conn.execute(f"ALTER TABLE tickets ADD COLUMN {col} {col_type}")
+
     conn.commit()
     conn.close()
+
 init()
 
 # ---------------------------
@@ -82,6 +97,9 @@ def navbar():
     .orange{color:orange;font-weight:bold;}
     .blue{color:blue;font-weight:bold;}
     .form-container{position:relative;border:1px solid #ccc;padding:20px;background:white;border-radius:8px;}
+    table{border-collapse:collapse;width:100%;background:white;}
+    td,th{border:1px solid #ddd;padding:8px;text-align:left;}
+    th{background:#f0f0f0;}
     </style>
     <h1>ESP.1 Deployment Tracker</h1>
     <div class="nav">
@@ -141,6 +159,7 @@ def dashboard():
 def create():
     msg=""
     if request.method=="POST":
+        # Use .get() to avoid KeyError
         bcr = request.form.get("bcr","")
         requestor = request.form.get("requestor","")
         service = request.form.get("service","")
@@ -212,7 +231,7 @@ def tickets_tab():
         for t in rows:
             c=color(t["status"])
             html += f"<div class='card col'>"
-            html += f"<h4>{t['bcr']}</h4>"
+            html += f"<h4>{t['bcr']} <span class='{c}'>[{t['status']}]</span></h4>"
             for k in t.keys():
                 html += f"<p>{k}: {t[k]}</p>"
             html += f"<p><a href='/edit/{t['id']}'>Edit</a></p></div>"
