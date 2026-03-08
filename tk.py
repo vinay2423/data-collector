@@ -1,9 +1,14 @@
 from flask import Flask, request, redirect
 import sqlite3
 import datetime
+import os
 
 app = Flask(__name__)
-DB = "esp1.db"
+
+# ---------------------------
+# DATABASE PATH FIX
+# ---------------------------
+DB = os.path.join(os.path.dirname(__file__), "esp1.db")
 
 # ---------------------------
 # DATABASE CONNECTION
@@ -201,7 +206,6 @@ def edit(id):
         log(id,status,"Status updated")
         conn.close()
         return redirect("/tickets")
-    # safe access
     build_url = ticket["build_url"] if "build_url" in ticket.keys() else ""
     release_url = ticket["release_url"] if "release_url" in ticket.keys() else ""
     release_branch = ticket["release_branch"] if "release_branch" in ticket.keys() else ""
@@ -232,7 +236,7 @@ def edit(id):
     """
 
 # ---------------------------
-# TICKETS TIMELINE WITH FILTERS
+# TICKETS TIMELINE
 # ---------------------------
 @app.route("/tickets")
 def tickets_tab():
@@ -240,16 +244,16 @@ def tickets_tab():
     search = request.args.get("q","")
     conn = db()
     query = "SELECT * FROM tickets"
-    params = []
+    params=[]
     if search and filter_status:
         query += " WHERE bcr LIKE ? AND status LIKE ?"
-        params = [f"%{search}%",f"%{filter_status}%"]
+        params=[f"%{search}%",f"%{filter_status}%"]
     elif search:
         query += " WHERE bcr LIKE ?"
-        params = [f"%{search}%"]
+        params=[f"%{search}%"]
     elif filter_status:
         query += " WHERE status LIKE ?"
-        params = [f"%{filter_status}%"]
+        params=[f"%{filter_status}%"]
     query += " ORDER BY id DESC"
     rows = conn.execute(query,params).fetchall()
     conn.close()
@@ -294,8 +298,8 @@ def tickets_tab():
     """
     side = True
     for r in rows:
-        c = color(r["status"])
-        cls = "left" if side else "right"
+        c=color(r["status"])
+        cls="left" if side else "right"
         side = not side
         build_url = r["build_url"] if "build_url" in r.keys() else ""
         release_url = r["release_url"] if "release_url" in r.keys() else ""
@@ -321,7 +325,7 @@ def tickets_tab():
     return navbar() + html
 
 # ---------------------------
-# HISTORY TIMELINE WITH BCR LINKS
+# HISTORY TIMELINE
 # ---------------------------
 @app.route("/history")
 def history():
@@ -339,6 +343,7 @@ def history():
     query += " ORDER BY h.time DESC"
     rows = conn.execute(query,params).fetchall()
     conn.close()
+
     html = """
     <h2>Status History</h2>
     <form>
@@ -370,11 +375,11 @@ def history():
     </style>
     <div class="timeline">
     """
-    side = True
+    side=True
     for r in rows:
         c=color(r["status"])
         cls="left" if side else "right"
-        side=not side
+        side = not side
         html+=f"""
         <div class="entry {cls}">
             <h3><span class="status-icon {c}-dot"></span><a href="/tickets?q={r['bcr']}">{r['bcr']}</a> | <span class="{c}">{r['status']}</span></h3>
@@ -382,11 +387,8 @@ def history():
             <p><b>Time:</b> {r['time']}</p>
         </div>
         """
-    html+="</div>"
+    html += "</div>"
     return navbar()+html.format(search=search_bcr)
 
 # ---------------------------
-# RUN SERVER
-# ---------------------------
-if __name__=="__main__":
-    app.run(host="0.0.0.0",
+# RUN
